@@ -162,7 +162,11 @@ function spawnShell() {
     LC_ALL: `${envLocale()}.UTF-8`,
   };
 
-  term = new Terminal({ cols: COLS, rows: ROWS, scrollback: 5000 });
+  // allowProposedApi إلزامي: واجهة buffer مستخدمة أعلاه وهي "مقترحة" في xterm
+  term = new Terminal({
+    cols: COLS, rows: ROWS, scrollback: 5000,
+    allowProposedApi: true,
+  });
   ptyProc = spawn(shell, [], {
     name: 'xterm-256color',
     cols: COLS,
