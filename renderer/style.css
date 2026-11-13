@@ -1,0 +1,69 @@
+/* araterm — النافذة */
+
+:root {
+  --bg: #12121c;
+  --fg: #e6e6f0;
+  --accent: #7aa2f7;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'Cascadia Mono', 'Consolas', 'Noto Naskh Arabic', 'Noto Sans Arabic', monospace;
+  font-size: 14px;
+  user-select: text;
+  cursor: text;
+}
+
+#screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 8px;
+  overflow: hidden;
+}
+
+#rows {
+  white-space: pre;
+  line-height: 1.35;
+}
+
+.row {
+  min-height: 1.35em;
+  white-space: pre;
+}
+
+/* المؤشر: كتلة وامضة */
+#cursor {
+  position: absolute;
+  display: none;
+  background: var(--fg);
+  mix-blend-mode: difference;
+  animation: blink 1.06s step-end infinite;
+  pointer-events: none;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.exit-msg {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--accent);
+  font-style: italic;
+}
+
+/* تحديد النص بلون مميز */
+::selection {
+  background: #3b4261;
+}
