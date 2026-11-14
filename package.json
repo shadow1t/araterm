@@ -1,12 +1,13 @@
 {
   "name": "araterm",
-  "version": "0.1.0",
-  "description": "Arabic-first terminal emulator — typed and program-output Arabic both render correctly, powered by the arafix engine (contextual shaping + BiDi). Electron + node-pty + @xterm/headless.",
+  "version": "0.2.0",
+  "description": "Arabic-first terminal emulator — typed and program-output Arabic both render correctly, powered by the arafix engine. Electron + node-pty + @xterm/headless.",
   "main": "main.js",
   "type": "module",
   "scripts": {
     "start": "electron .",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "dist": "electron-builder --win nsis"
   },
   "engines": {
     "node": ">=18"
@@ -26,7 +27,34 @@
     "node-pty": "^1.0.0"
   },
   "devDependencies": {
-    "electron": "^33.2.0"
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.shadow1t.araterm",
+    "productName": "araterm",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.cjs",
+      "core/**",
+      "renderer/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "araterm"
+    }
   },
   "repository": {
     "type": "git",
