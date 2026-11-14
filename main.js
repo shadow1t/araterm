@@ -127,7 +127,7 @@ function readRow(line, cols) {
   for (let x = 0; x < cols; x++) {
     const cell = line.getCell(x);
     if (!cell) break;
-    cells.push({ ch: cell.getChars(), style: cellStyle(cell) });
+    cells.push({ ch: cell.getChars(), style: cellStyle(cell), w: cell.getWidth() });
   }
   return cells;
 }
@@ -237,6 +237,17 @@ function spawnShell() {
     term.write(chunk);
     scheduleRender();
   });
+
+  // OSC 0/2: عنوان النافذة — أدوات AI تضعه (مثل ✳ Antigravity — Claude)
+  try {
+    if (typeof term.onTitleChange === 'function') {
+      term.onTitleChange((t) => {
+        if (win && !win.isDestroyed() && t) win.setTitle(String(t));
+      });
+    } else {
+      dbg('onTitleChange غير متاح في هذا الإصدار من xterm — العناوين معطلة');
+    }
+  } catch (err) { dbg(`onTitleChange: ${err.message}`); }
   ptyProc.onExit(({ exitCode }) => {
     dbg(`pty exit code=${exitCode} (بعد ${dataChunks} دفعة بيانات)`);
     if (win && !win.isDestroyed()) {
@@ -263,6 +274,18 @@ app.whenReady().then(() => {
     sendFrame();
   });
   ipcMain.on('dbg', (_e, msg) => dbg(`RENDERER ${msg}`));
+  // لصق مضوّق: أدوات AI تفعّل bracketed paste فتستقبل عدة أسطر كمدخل واحد
+  ipcMain.on('paste', (_e, text) => {
+    if (!ptyProc) return;
+    let data = String(text);
+    let bracketed = false;
+    try {
+      bracketed = !!(term.modes && term.modes.bracketedPaste);
+      if (bracketed) data = `\x1b[200~${data}\x1b[201~`;
+    } catch (err) { dbg(`modes: ${err.message}`); }
+    dbg(`paste ${data.length} بايت (bracketed=${bracketed})`);
+    ptyProc.write(data);
+  });
   ipcMain.on('input', (_e, data) => {
     dbg(`input ${JSON.stringify(String(data))} (pty=${ptyProc ? 'حي' : 'ميت'})`);
     if (ptyProc) ptyProc.write(String(data));

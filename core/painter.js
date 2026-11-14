@@ -41,22 +41,32 @@ const RTL_RE = /[\u0621-\u064A\u0671-\u06D3\uFB50-\uFDFF\uFE70-\uFEFF]/;
  *
  * Part = { text, style, cells, clusters } — text بالترتيب المنطقي الأصلي.
  * visualClusters مرتب يسار→يمين كما سيرسمه المتصفح (لتقريب موضع المؤشر).
+ *
+ * الخلية: {ch, style?, w?} — w = عرض العمود (1 أو 2 للعريضة/الإيموجي، من
+ * cell.getWidth() في xterm). إن غاب w فالافتراض 1، إلا surrogate pair (إيموجي
+ * لم يمر عبر xterm — في الاختبارات) فيُحسب من طول النص.
  */
 export function rowToVisual(cells, dir = 'auto') {
   const hasArabic = cells.some((c) => c.ch && ARABIC_RE.test(c.ch));
+
+  const clusterW = (cell) => {
+    if (cell.w !== undefined) return cell.w;
+    const len = (cell.ch ?? '').length;
+    return len >= 2 ? len : 1; // surrogate pair (إيموجي) = 2 أعمدة تقريبًا
+  };
 
   // عناقيد منطقية كما هي — بلا تشكيل: المتصفح يشكّل بنفسه وبخطوط أفضل
   const clusters = [];
   for (let i = 0; i < cells.length; i++) {
     const ch = cells[i].ch;
     if (ch === '' || ch == null || INVISIBLE.has(ch)) continue;
-    clusters.push({ base: ch, rest: '', meta: cells[i].style, cellIndex: i });
+    clusters.push({ base: ch, rest: '', meta: cells[i].style, cellIndex: i, w: clusterW(cells[i]) });
   }
 
   // مقاطع العرض: منطقية، دمج المتجاور بنفس مرجع النمط
   const parts = [];
   for (const c of clusters) {
-    const cluster = { cellIndex: c.cellIndex, rtl: RTL_RE.test(c.base), w: (c.base + c.rest).length };
+    const cluster = { cellIndex: c.cellIndex, rtl: RTL_RE.test(c.base), w: c.w };
     const last = parts[parts.length - 1];
     if (last && last.style === c.meta) {
       last.text += c.base + c.rest;
@@ -73,15 +83,16 @@ export function rowToVisual(cells, dir = 'auto') {
   }
 
   // الترتيب البصري — لحساب المؤشر فقط:
-  // shapeClusters لدمج لام-ألف في عنقود واحد بعرض 1 (كما يرسمها المتصفح)
+  // shapeClusters لدمج لام-ألف في عنقود واحد (كما يرسمها المتصفح)
   // reorderClusters بترتيب يسار→يمين مطابق لخوارزمية UAX#9 في Chromium
+  // (حقول w وcellIndex محفوظة عبر spread في محرك arafix)
   const visualClusters = hasArabic
     ? reorderClusters(shapeClusters(clusters), dir).map((c) => ({
         cellIndex: c.cellIndex,
         rtl: RTL_RE.test(c.base),
-        w: (c.base + c.rest).length,
+        w: c.w,
       }))
-    : clusters.map((c) => ({ cellIndex: c.cellIndex, rtl: false, w: (c.base + c.rest).length }));
+    : clusters.map((c) => ({ cellIndex: c.cellIndex, rtl: false, w: c.w }));
 
   return { parts, arabic: hasArabic, visualClusters };
 }

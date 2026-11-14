@@ -121,3 +121,23 @@ test('لا عربية: visualClusters بترتيب منطقي مباشر وltr',
   assert.ok(visualClusters.every((c) => !c.rtl));
   assert.deepEqual(visualClusters.map((c) => c.w), [1, 1, 1]);
 });
+
+test('محارف عريضة (إيموجي): w=2 من الخلية يحترم في حساب المؤشر', () => {
+  const style = {};
+  const cs = [
+    { ch: 'a', style, w: 1 },
+    { ch: '✅', style, w: 2 }, // East Asian Wide — عمودان في xterm
+    { ch: 'b', style, w: 1 },
+  ];
+  const { parts, visualClusters } = rowToVisual(cs);
+  assert.equal(parts[0].text, 'a✅b');
+  assert.deepEqual(visualClusters.map((c) => c.w), [1, 2, 1]);
+  assert.equal(cursorVisualX(visualClusters, 3, 3), 4);
+});
+
+test('إيموجي فلكي بلا w (خارج xterm): يُحسب عمودين تلقائيًا (surrogate pair)', () => {
+  const style = {};
+  const cs = [{ ch: '😊', style }]; // U+1F60A — زوج عالٍ، طوله 2 وحدتا كود
+  const { visualClusters } = rowToVisual(cs);
+  assert.equal(visualClusters[0].w, 2);
+});

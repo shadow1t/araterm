@@ -163,10 +163,11 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// لصق: النص كما هو (الصدفة تعيد صداه عبر الـ pty فيُرسم مصححًا)
+// لصق: عبر قناة paste المخصصة — الرئيسية تضيف الوضع المضوّق (bracketed)
+// إن كانت الأداة فعّلته (أدوات AI تقبل عدة أسطر كمدخل واحد)
 document.addEventListener('paste', (e) => {
   const text = e.clipboardData?.getData('text') ?? '';
-  if (text) window.araterm.sendInput(text.replace(/\r?\n/g, '\r'));
+  if (text) window.araterm.paste(text.replace(/\r?\n/g, '\r'));
   e.preventDefault();
 });
 

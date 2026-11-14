@@ -31,11 +31,11 @@ html, body {
 
 #rows {
   white-space: pre;
-  line-height: 1.35;
+  line-height: 1.45; /* مساحة للتشكيل (الفتحة/الضمة) حتى لا تُقص */
 }
 
 .row {
-  min-height: 1.35em;
+  min-height: 1.45em;
   white-space: pre;
 }
 

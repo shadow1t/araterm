@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('araterm', {
   onError: (cb) => ipcRenderer.on('frame-error', (_e, msg) => cb(msg)),
   /** إرسال مدخلات (بايتات/حروف) إلى الصدفة */
   sendInput: (data) => ipcRenderer.send('input', data),
+  /** لصق نص (تدعمه الرئيسية بالوضع المضوّق bracketed paste لأدوات AI) */
+  paste: (text) => ipcRenderer.send('paste', text),
   /** تغيير مقاس الشاشة بالخلايا */
   resize: (cols, rows) => ipcRenderer.send('resize', { cols, rows }),
   /** تمرير السجل (سطور موجبة/سالبة) */
