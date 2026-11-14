@@ -11,6 +11,7 @@
  */
 
 import { app, BrowserWindow, ipcMain } from 'electron';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +24,35 @@ const { spawn } = ptyPkg;
 const { Terminal } = headlessPkg;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// ---------------------------------------------------------------------------
+// تشخيص: ملف سجل بجانب المشروع + عرض الأخطاء في النافذة بدل صمت أعمى
+// ---------------------------------------------------------------------------
+const DEBUG_LOG = path.join(__dirname, 'araterm-debug.log');
+let dataChunks = 0;
+
+function dbg(msg) {
+  try {
+    fs.appendFileSync(DEBUG_LOG, `${new Date().toISOString()} ${msg}\n`);
+  } catch { /* القرص غير متاح — نتجاهل */ }
+}
+
+process.on('uncaughtException', (err) => {
+  dbg(`UNCAUGHT ${err && err.stack ? err.stack : err}`);
+  try {
+    if (win && !win.isDestroyed()) win.webContents.send('frame-error', String(err && err.message ? err.message : err));
+  } catch { /* قد تكون النافذة ميتة */ }
+});
+process.on('unhandledRejection', (err) => {
+  dbg(`UNHANDLED ${err && err.stack ? err.stack : err}`);
+});
+
+function notifyError(err) {
+  dbg(`ERROR ${err && err.stack ? err.stack : err}`);
+  try {
+    if (win && !win.isDestroyed()) win.webContents.send('frame-error', String(err && err.message ? err.message : err));
+  } catch { /* النافذة غير متاحة */ }
+}
 
 const COLS = 90;
 const ROWS = 28;
@@ -101,26 +131,30 @@ function readRow(line, cols) {
 /** بناء إطار كامل (كل الصفوف المرئية + المؤشر) وإرساله للنافذة */
 function sendFrame() {
   if (!win || win.isDestroyed()) return;
-  const buf = term.buffer.active;
-  const rows = [];
-  for (let r = 0; r < term.rows; r++) {
-    const line = buf.getLine(buf.viewportY + r);
-    const cells = readRow(line, term.cols);
-    rows.push(rowToVisual(cells));
-  }
+  try {
+    const buf = term.buffer.active;
+    const rows = [];
+    for (let r = 0; r < term.rows; r++) {
+      const line = buf.getLine(buf.viewportY + r);
+      const cells = readRow(line, term.cols);
+      rows.push(rowToVisual(cells));
+    }
 
-  // المؤشر (يُخفى عند التمرير في السجل — إصدار أولي)
-  const scrolled = buf.viewportY > 0;
-  const cursorRow = buf.cursorY;
-  const cursor = {
-    row: cursorRow,
-    visualX: buf.cursorX,
-    hidden: scrolled || cursorRow >= term.rows,
-  };
-  if (!cursor.hidden && rows[cursorRow]) {
-    cursor.visualX = cursorVisualX(rows[cursorRow].parts, buf.cursorX, term.cols);
+    // المؤشر (يُخفى عند التمرير في السجل — إصدار أولي)
+    const scrolled = buf.viewportY > 0;
+    const cursorRow = buf.cursorY;
+    const cursor = {
+      row: cursorRow,
+      visualX: buf.cursorX,
+      hidden: scrolled || cursorRow >= term.rows,
+    };
+    if (!cursor.hidden && rows[cursorRow]) {
+      cursor.visualX = cursorVisualX(rows[cursorRow].parts, buf.cursorX, term.cols);
+    }
+    win.webContents.send('frame', { rows, cursor });
+  } catch (err) {
+    notifyError(err);
   }
-  win.webContents.send('frame', { rows, cursor });
 }
 
 /** جدولة إطار بعد ~16ms (دمج الدفعات المتلاحقة من الـ pty) */
@@ -167,19 +201,29 @@ function spawnShell() {
     cols: COLS, rows: ROWS, scrollback: 5000,
     allowProposedApi: true,
   });
-  ptyProc = spawn(shell, [], {
-    name: 'xterm-256color',
-    cols: COLS,
-    rows: ROWS,
-    cwd: os.homedir(),
-    env,
-  });
+  dbg(`spawn shell=${shell} cwd=${os.homedir()} node=${process.version} electron=${process.versions.electron}`);
+  try {
+    ptyProc = spawn(shell, [], {
+      name: 'xterm-256color',
+      cols: COLS,
+      rows: ROWS,
+      cwd: os.homedir(),
+      env,
+    });
+  } catch (err) {
+    dbg(`SPAWN FAILED ${err && err.stack ? err.stack : err}`);
+    notifyError(err);
+    return;
+  }
 
   ptyProc.onData((chunk) => {
+    dataChunks++;
+    if (dataChunks <= 5) dbg(`pty data #${dataChunks} (${chunk.length} bytes)`);
     term.write(chunk);
     scheduleRender();
   });
   ptyProc.onExit(({ exitCode }) => {
+    dbg(`pty exit code=${exitCode} (بعد ${dataChunks} دفعة بيانات)`);
     if (win && !win.isDestroyed()) {
       win.webContents.send('exit', { exitCode });
     }
@@ -195,11 +239,18 @@ function envLocale() {
 }
 
 app.whenReady().then(() => {
+  dbg('=== araterm main ready ===');
   createWindow();
   spawnShell();
 
-  ipcMain.on('ready', () => sendFrame());
-  ipcMain.on('input', (_e, data) => ptyProc && ptyProc.write(String(data)));
+  ipcMain.on('ready', () => {
+    dbg('renderer ready');
+    sendFrame();
+  });
+  ipcMain.on('input', (_e, data) => {
+    dbg(`input ${JSON.stringify(String(data))} (pty=${ptyProc ? 'حي' : 'ميت'})`);
+    if (ptyProc) ptyProc.write(String(data));
+  });
   ipcMain.on('resize', (_e, { cols, rows }) => {
     cols = Math.max(10, Math.min(400, Math.floor(cols)));
     rows = Math.max(4, Math.min(200, Math.floor(rows)));

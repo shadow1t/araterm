@@ -44,9 +44,20 @@ function applyStyle(el, style) {
   }
 }
 
+/** عرض خطأ داخل النافذة (بدل صمت أعمى) */
+function showError(msg) {
+  const d = document.createElement('div');
+  d.className = 'row';
+  d.style.color = '#e05e5e';
+  d.textContent = `⚠ خطأ: ${msg}`;
+  rowsEl.replaceChildren(d);
+  cursorEl.style.display = 'none';
+}
+
 /** رسم إطار كامل */
 function drawFrame(frame) {
-  const frag = document.createDocumentFragment();
+  try {
+    const frag = document.createDocumentFragment();
   for (let r = 0; r < frame.rows.length; r++) {
     const rowDiv = document.createElement('div');
     rowDiv.className = 'row';
@@ -75,6 +86,9 @@ function drawFrame(frame) {
     cursorEl.style.height = cellH + 'px';
   } else {
     cursorEl.style.display = 'none';
+  }
+  } catch (err) {
+    showError(`تعطل الرسم — ${err && err.message ? err.message : err}`);
   }
 }
 
@@ -146,7 +160,18 @@ screenEl.addEventListener('wheel', (e) => {
 // التهيئة
 // ---------------------------------------------------------------------------
 
-window.araterm.onFrame(drawFrame);
+// لو فشل تحميل الجسر (preload) نظهر السبب بدل نافذة فارغة صامتة
+if (!window.araterm) {
+  const d = document.createElement('div');
+  d.style.cssText = 'color:#e05e5e;padding:16px;font-size:15px';
+  d.textContent = '⚠ لم يُحمّل جسر preload — أرسل ملف araterm-debug.log';
+  document.body.appendChild(d);
+} else {
+
+let gotFrame = false;
+
+window.araterm.onError((msg) => showError(msg));
+window.araterm.onFrame((frame) => { gotFrame = true; drawFrame(frame); });
 window.araterm.onExit(({ exitCode }) => {
   const msg = document.createElement('div');
   msg.className = 'exit-msg';
@@ -165,4 +190,13 @@ function start() {
   reportSize();
   window.addEventListener('resize', () => reportSize());
   window.araterm.ready();
+
+  // حارس مراقبة: إن لم تصل أي بيانات من الصدفة خلال 4 ثوانٍ قل للمستخدم
+  setTimeout(() => {
+    if (!gotFrame) {
+      showError('لم تصل بيانات من الصدفة — أغلق النافذة وأرسل ملف araterm-debug.log');
+    }
+  }, 4000);
+}
+
 }

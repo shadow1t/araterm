@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('araterm', {
   onFrame: (cb) => ipcRenderer.on('frame', (_e, frame) => cb(frame)),
   /** إشعار خروج الصدفة */
   onExit: (cb) => ipcRenderer.on('exit', (_e, info) => cb(info)),
+  /** خطأ في العملية الرئيسية (تشخيص) */
+  onError: (cb) => ipcRenderer.on('frame-error', (_e, msg) => cb(msg)),
   /** إرسال مدخلات (بايتات/حروف) إلى الصدفة */
   sendInput: (data) => ipcRenderer.send('input', data),
   /** تغيير مقاس الشاشة بالخلايا */
