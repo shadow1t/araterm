@@ -22,4 +22,6 @@ contextBridge.exposeInMainWorld('araterm', {
   scroll: (delta) => ipcRenderer.send('scroll', delta),
   /** النافذة جاهزة */
   ready: () => ipcRenderer.send('ready'),
+  /** رسالة تشخيص من الصفحة إلى السجل */
+  debug: (msg) => ipcRenderer.send('dbg', String(msg)),
 });

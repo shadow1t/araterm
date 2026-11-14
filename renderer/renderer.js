@@ -10,6 +10,12 @@ const rowsEl = document.getElementById('rows');
 const cursorEl = document.getElementById('cursor');
 const screenEl = document.getElementById('screen');
 
+// تتبع تشخيصي: كل خطوة من حياة الصفحة تُسجَّل في araterm-debug.log
+const rdbg = (msg) => { try { window.araterm?.debug?.(msg); } catch { /* تجاهل */ } };
+rdbg(`renderer.js بدأ — الجسر ${window.araterm ? 'موجود' : 'مفقود!!'}`);
+window.addEventListener('error', (e) => rdbg(`window error: ${e.message} @${e.filename}:${e.lineno}:${e.colno}`));
+window.addEventListener('unhandledrejection', (e) => rdbg(`unhandled rejection: ${e.reason}`));
+
 let cellW = 8.4;   // يُقاس بعد تحميل الخط
 let cellH = 19;    // يُقاس بعد تحميل الخط
 let lastCols = 90;
@@ -138,6 +144,7 @@ document.addEventListener('keydown', (e) => {
   }
   // حرف قابل للطبع (بما فيه العربية)
   if (e.key.length === 1) {
+    rdbg(`مفتاح: ${JSON.stringify(e.key)}`);
     e.preventDefault();
     window.araterm.sendInput(e.key);
   }
@@ -170,8 +177,14 @@ if (!window.araterm) {
 
 let gotFrame = false;
 
+rdbg('بدأ تسجيل المستمعين (onFrame/onError/onExit)');
+
 window.araterm.onError((msg) => showError(msg));
-window.araterm.onFrame((frame) => { gotFrame = true; drawFrame(frame); });
+window.araterm.onFrame((frame) => {
+  if (!gotFrame) rdbg('أول إطار وصل من الرئيسية ✅');
+  gotFrame = true;
+  drawFrame(frame);
+});
 window.araterm.onExit(({ exitCode }) => {
   const msg = document.createElement('div');
   msg.className = 'exit-msg';
@@ -180,12 +193,14 @@ window.araterm.onExit(({ exitCode }) => {
 });
 
 if (document.fonts?.ready) {
-  document.fonts.ready.then(start);
+  rdbg('بانتظار جاهزية الخطوط (fonts.ready)...');
+  document.fonts.ready.then(() => { rdbg('الخطوط جاهزة — استدعاء start()'); start(); });
 } else {
   start();
 }
 
 function start() {
+  rdbg('start() يبدأ');
   measureCell();
   reportSize();
   window.addEventListener('resize', () => reportSize());

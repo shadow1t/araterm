@@ -25,6 +25,10 @@ const { Terminal } = headlessPkg;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// علاج عطل معروف في Electron على ويندوز: بعض تعريفات GPU تقتل عملية الرسم
+// فتفتح النافذة فارغة صامتة (لا فائدة تسريع عتادي في تيرمنال نصي)
+app.disableHardwareAcceleration();
+
 // ---------------------------------------------------------------------------
 // تشخيص: ملف سجل بجانب المشروع + عرض الأخطاء في النافذة بدل صمت أعمى
 // ---------------------------------------------------------------------------
@@ -182,6 +186,15 @@ function createWindow() {
   });
   win.removeMenu();
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+
+  // توجيه كل رسائل/أخطاء صفحة النافذة إلى سجل التشخيص
+  win.webContents.on('console-message', (_e, level, message, line, sourceId) => {
+    dbg(`CONSOLE[${level}] ${message} (${sourceId}:${line})`);
+  });
+  win.webContents.on('did-finish-load', () => dbg('renderer page loaded'));
+  win.webContents.on('did-fail-load', (_e, code, desc, url) => dbg(`LOAD FAILED code=${code} ${desc} ${url}`));
+  win.webContents.on('render-process-gone', (_e, details) => dbg(`RENDER GONE reason=${details.reason} exitCode=${details.exitCode}`));
+  win.webContents.on('unresponsive', () => dbg('RENDER UNSRESPONSIVE'));
 }
 
 function spawnShell() {
@@ -247,6 +260,7 @@ app.whenReady().then(() => {
     dbg('renderer ready');
     sendFrame();
   });
+  ipcMain.on('dbg', (_e, msg) => dbg(`RENDERER ${msg}`));
   ipcMain.on('input', (_e, data) => {
     dbg(`input ${JSON.stringify(String(data))} (pty=${ptyProc ? 'حي' : 'ميت'})`);
     if (ptyProc) ptyProc.write(String(data));
