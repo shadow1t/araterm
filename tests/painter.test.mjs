@@ -1,98 +1,123 @@
 'use strict';
 
 /**
- * اختبارات الراسمة — painter.test.mjs
- * خلايا شاشة → مقاطع بصرية بأنماطها + موضع المؤشر البصري.
+ * اختبارات الراسمة — العقد الجديد (ما بعد درس الانقلاب المزدوج):
+ *   parts: نص **منطقي** (المتصفح يشكّل ويرتب بنفسه — DOM ليس تيرمنال غبيًا)
+ *   visualClusters: الترتيب البصري يسار→يمين لحساب موضع المؤشر فقط
  */
 
-import test from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
+
 import { rowToVisual, cursorVisualX } from '../core/painter.js';
 
-const CH = (s) => Array.from(s).map((ch) => ({ ch, style: undefined }));
+const M = '\u0645', R = '\u0631', H = '\u062D', B = '\u0628', A = '\u0627'; // م ر ح ب ا
+const LAM = '\u0644';
 
-test('صف عربي: معكوس بصريًا مع فهارس الخلايا المنطقية', () => {
-  const { parts, arabic } = rowToVisual(CH('مرحبا'));
-  assert.equal(arabic, true);
-  assert.equal(parts.length, 1);
-  assert.equal(parts[0].text, '\uFE8E\uFE92\uFEA3\uFEAE\uFEE3');
-  assert.deepEqual(parts[0].cells, [4, 3, 2, 1, 0]);
-  assert.ok(parts[0].clusters.every((c) => c.rtl === true));
-});
+/** بناء خلايا من نص (نمط واحد مشترك) */
+function cells(text, styleFactory) {
+  const style = styleFactory || { fg: null };
+  return [...text].map((ch) => ({ ch, style }));
+}
 
-test('صف لاتيني يمر كما هو مع rtl=false', () => {
-  const { parts, arabic } = rowToVisual(CH('hello world'));
+test('سطر لاتيني: نص منطقي كما هو + دمج الخلايا المتشابهة', () => {
+  const { parts, arabic, visualClusters } = rowToVisual(cells('hello'));
   assert.equal(arabic, false);
   assert.equal(parts.length, 1);
-  assert.equal(parts[0].text, 'hello world');
-  assert.ok(parts[0].clusters.every((c) => c.rtl === false));
-  assert.deepEqual(parts[0].cells, Array.from({ length: 11 }, (_, i) => i));
+  assert.equal(parts[0].text, 'hello');
+  assert.deepEqual(visualClusters.map((c) => c.cellIndex), [0, 1, 2, 3, 4]);
 });
 
-test('الأنماط: عربي أحمر + لاتيني أزرق — كل نمط يبقى مع نصه بعد الترتيب', () => {
-  const red = { fg: '#ff0000' };
-  const blue = { fg: '#0000ff' };
-  const cells = [
-    ...Array.from('مرحبا').map((ch) => ({ ch, style: red })),
-    ...Array.from(' world').map((ch) => ({ ch, style: blue })),
+test('دمج المتجاور بنفس النمط وفصل المختلف — بالترتيب المنطقي', () => {
+  const red = { fg: 'red' }, blue = { fg: 'blue' };
+  const cs = [
+    { ch: 'a', style: red }, { ch: 'b', style: red },
+    { ch: 'c', style: blue }, { ch: 'd', style: blue },
   ];
-  const { parts } = rowToVisual(cells);
+  const { parts } = rowToVisual(cs);
   assert.equal(parts.length, 2);
-  // 'world ' (بما فيه الفراغ من الخلية 5) ثم العربية المعكوسة
-  assert.equal(parts[0].text, 'world ');
-  assert.strictEqual(parts[0].style, blue);
-  assert.deepEqual(parts[0].cells, [6, 7, 8, 9, 10, 5]);
-  assert.equal(parts[1].text, '\uFE8E\uFE92\uFEA3\uFEAE\uFEE3');
-  assert.strictEqual(parts[1].style, red);
-  assert.deepEqual(parts[1].cells, [4, 3, 2, 1, 0]);
-  // العناقيد: كل عنقود عربي RTL بعرض 1
-  assert.deepEqual(parts[1].clusters.map((c) => c.rtl), [true, true, true, true, true]);
+  assert.equal(parts[0].text, 'ab');
+  assert.equal(parts[1].text, 'cd');
+  assert.equal(parts[0].style, red);
 });
 
-test('خلايا بنفس النمط المتجاور تُدمج (مرجع الكائن نفسه)', () => {
-  const s = { fg: '#0f0' };
-  const cells = [...Array.from('ab').map((ch) => ({ ch, style: s }))];
-  const { parts } = rowToVisual(cells);
+test('عربي: parts بالترتيب المنطقي الأصلي وبلا صور عرضية (المتصفح يشكّل)', () => {
+  const word = M + R + H + B + A; // مرحبا منطقيًا
+  const { parts, arabic } = rowToVisual(cells(word));
+  assert.equal(arabic, true);
+  assert.equal(parts[0].text, word); // م أولًا وآخرًا — لا عكس
+  for (const ch of parts[0].text) {
+    assert.ok(!(ch.charCodeAt(0) >= 0xFB50 && ch.charCodeAt(0) <= 0xFEFF),
+      `لا يجوز إخراج صور عرضية للتDOM: ${ch.codePointAt(0).toString(16)}`);
+  }
+});
+
+test('عربي: الترتيب البصري للمؤشر معكوس داخليًا (يسار→يمين: ا ب ح ر م)', () => {
+  const word = M + R + H + B + A;
+  const { visualClusters } = rowToVisual(cells(word));
+  assert.deepEqual(visualClusters.map((c) => c.cellIndex), [4, 3, 2, 1, 0]);
+  assert.ok(visualClusters.every((c) => c.rtl && c.w === 1));
+});
+
+test('سطر مختلط لاتيني أولًا: dir=auto يعطي فقرة LTR — hello ثم العربية يمينًا', () => {
+  const text = 'hello ' + M + R + H + B + A; // "hello مرحبا" — أول قوي = h → LTR
+  const { parts, visualClusters } = rowToVisual(cells(text));
+  assert.equal(parts[0].text, text); // منطقي كما هو
+  // البصري: h e l l o [فراغ] ثم ا ب ح ر م
+  assert.deepEqual(visualClusters.map((c) => c.cellIndex), [0, 1, 2, 3, 4, 5, 10, 9, 8, 7, 6]);
+});
+
+test('مؤشر نهاية سطر عربي: يرسم عند الحافة اليسرى (مثال مرحبا → 0)', () => {
+  const word = M + R + H + B + A;
+  const { visualClusters } = rowToVisual(cells(word));
+  assert.equal(cursorVisualX(visualClusters, 5, 5), 0);
+});
+
+test('مؤشر نهاية "hello مرحبا": يسار عنقود الألف = عمود 6', () => {
+  const text = 'hello ' + M + R + H + B + A;
+  const { visualClusters } = rowToVisual(cells(text));
+  assert.equal(cursorVisualX(visualClusters, 11, 11), 6);
+});
+
+test('مؤشر قبل الميم في "hello مرحبا": يمين الميم بصريًا = عمود 11', () => {
+  const text = 'hello ' + M + R + H + B + A;
+  const { visualClusters } = rowToVisual(cells(text));
+  assert.equal(cursorVisualX(visualClusters, 6, 11), 11);
+});
+
+test('عربي أولًا في سطر مختلط: dir=auto يعطي فقرة RTL — hello يسارًا', () => {
+  const text = M + R + H + B + A + ' hello'; // "مرحبا hello" — أول قوي = م → RTL
+  const { visualClusters } = rowToVisual(cells(text));
+  // البصري يسار→يمين: h e l l o [فراغ] ا ب ح ر م
+  assert.deepEqual(visualClusters.map((c) => c.cellIndex), [6, 7, 8, 9, 10, 5, 4, 3, 2, 1, 0]);
+});
+
+test('مؤشر نهاية "مرحبا hello": بعد واو hello البصرية = عمود 5', () => {
+  const text = M + R + H + B + A + ' hello';
+  const { visualClusters } = rowToVisual(cells(text));
+  assert.equal(cursorVisualX(visualClusters, 11, 11), 5);
+});
+
+test('لام-ألف: عنقود بصري واحد بعرض 1 (كما يرسمها المتصفح)', () => {
+  const { parts, visualClusters } = rowToVisual(cells(LAM + A)); // "لا"
+  assert.equal(parts[0].text, LAM + A); // النص المنطقي كما هو — المتصفح يركّبها
+  assert.equal(visualClusters.length, 1);
+  assert.equal(visualClusters[0].w, 1);
+  assert.equal(visualClusters[0].cellIndex, 0);
+});
+
+test('محارف خفية (علامات اتجاه): لا تصل إلى العرض', () => {
+  const style = {};
+  const cs = [
+    { ch: 'a', style }, { ch: '\u200F', style }, { ch: 'b', style },
+  ];
+  const { parts } = rowToVisual(cs);
   assert.equal(parts.length, 1);
   assert.equal(parts[0].text, 'ab');
-  assert.strictEqual(parts[0].style, s);
 });
 
-test('محارف خفية تُحذف من الصف حتى بلا عربية', () => {
-  const { parts } = rowToVisual([{ ch: 'a', style: undefined }, { ch: '\u200E', style: undefined }, { ch: 'b', style: undefined }]);
-  assert.equal(parts[0].text, 'ab');
-  assert.deepEqual(parts[0].cells, [0, 2]);
-});
-
-test('مؤشر نهاية سطر عربي: يظهر عند الحافة اليسرى (بداية العربية بصريًا)', () => {
-  const { parts } = rowToVisual(CH('مرحبا'));
-  // بعد كتابة "مرحبا" المؤشر عند الخلية 5 (نهاية السطر)
-  assert.equal(cursorVisualX(parts, 5, 5), 0);
-});
-
-test('مؤشر وسط نص لاتيني: يبقى بمكانه', () => {
-  const { parts } = rowToVisual(CH('hello'));
-  assert.equal(cursorVisualX(parts, 3, 5), 3);
-  assert.equal(cursorVisualX(parts, 0, 5), 0);
-  assert.equal(cursorVisualX(parts, 5, 5), 5);
-});
-
-test('مؤشر نهاية سطر مختلط: العربية آخر ما كُتب → المؤشر قبلها بصريًا', () => {
-  // "hello مرحبا": 5+1+5 = 11 خلية؛ المؤشر عند 11 (نهاية)
-  const cells = CH('hello مرحبا');
-  const { parts } = rowToVisual(cells);
-  const x = cursorVisualX(parts, 11, 11);
-  // العربية تبدأ بصريًا عند العمود 6 (بعد "hello ") وتنتهي عند 6
-  assert.equal(x, 6); // يسار آخر حرف عربي بصريًا (قبل "ا" النهائية)
-});
-
-test('أقواس معكوسة عبر حدود المقاطع تظل متناسقة', () => {
-  const { parts } = rowToVisual(CH('(مرحبا)'));
-  assert.equal(parts[0].text, '(\uFE8E\uFE92\uFEA3\uFEAE\uFEE3)');
-});
-
-test('أرقام عربية-هندية داخل صف تحفظ ترتيبها', () => {
-  const { parts } = rowToVisual(CH('سعر ٤٥ ريال'));
-  const text = parts.map((p) => p.text).join('');
-  assert.equal(text, '\uFEDD\uFE8E\uFEF3\uFEAD ٤٥ \uFEAE\uFECC\uFEB3');
+test('لا عربية: visualClusters بترتيب منطقي مباشر وltr', () => {
+  const { visualClusters } = rowToVisual(cells('abc'));
+  assert.ok(visualClusters.every((c) => !c.rtl));
+  assert.deepEqual(visualClusters.map((c) => c.w), [1, 1, 1]);
 });

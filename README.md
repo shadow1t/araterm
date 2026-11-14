@@ -15,8 +15,10 @@
 **مخرجاتها العربية سليمة**. لا أنابيب، لا استدعاء أدوات، لا انتظار.
 
 كيف؟ في araterm **نحن من يرسم الشاشة**: كل حرف — سواء صدى ما تكتبه أو مخرجات
-البرامج — يمر عبر محرك [arafix](https://github.com/shadow1t/arafix) (تشكيل سياقي
-+ إعادة ترتيب BiDi) قبل أن يُرسم. هذا ما عجزت عنه أدوات الأنابيب للأبد، لأنها
+البرامج — يعبر محاكي VT ثم يُعرض في صفحة نملكها بالكامل، والمتصفح (Chromium)
+يشكّل العربية ويطبق BiDi أصلًا — لكن فقط داخل تيرمنال يفتح الباب له. محرك
+[arafix](https://github.com/shadow1t/arafix) يحسب المواضع البصرية (المؤشر)
+بما يطابق خوارزمية المتصفح. هذا ما عجزت عنه أدوات الأنابيب للأبد، لأنها
 لا تملك الرسم — أما التيرمنال فيملكه.
 
 ## المعمارية
@@ -27,17 +29,18 @@
    البرامج ─────┘            │
                               v
                      core/painter.js + محرك arafix
-                     (خلايا → تشكيل → ترتيب بصري + أنماط + مؤشر)
+                     (خلايا → مقاطع منطقية بأنماطها + مواضع بصرية للمؤشر)
                               │
                               v
-                     النافذة (Electron) — عربي سليم
+                     النافذة (Electron/Chromium) — عربي سليم
 ```
 
 - **@xterm/headless** (محرك Terminal في VS Code) يفكك كل متتاليات VT: ألوان،
   مؤشر، تمرير، تحكم — بلا تنفيذ جزئي هش من عندنا.
 - **node-pty** يشغّل صدفتك الحقيقية (ConPTY في ويندوز / PTY في لينكس وماك).
-- **محرك arafix** — قلب المشروع — يحوّل كل صف إلى نص عربي مشكَّل ومرتب بصريًا،
-  مع التصاق الألوان بنصها وحساب موضع المؤشر على مستوى العنقود.
+- **محرك arafix** — قلب الحساب — يبني المقاطع المنطقية (نص بأنماطه كما هو)،
+  بينما يتكفل Chromium بالتشكيل والاتجاه، ويحسب arafix الترتيب البصري
+  المطابق لوضع المؤشر على مستوى العنقود.
 
 ## الحالة: v0.1 — نموذج أولي يعمل
 
@@ -94,9 +97,10 @@ npm start        # أو: npx electron .
 ## English
 
 **araterm** is an Arabic-first terminal: typed Arabic and program output both
-render correctly, because araterm owns the rendering pipeline and pushes every
-line through the [arafix](https://github.com/shadow1t/arafix) engine
-(contextual shaping + simplified BiDi, UAX #9) before drawing.
+render correctly, because araterm owns the rendering pipeline. Rows are emitted
+in logical order with their styles and Chromium's own shaping + BiDi (UAX #9)
+renders them, while the [arafix](https://github.com/shadow1t/arafix) engine
+computes the matching visual order for cluster-level cursor placement.
 
 Stack: Electron + node-pty + @xterm/headless (the VS Code terminal engine) +
 arafix as the text core. Status: **v0.1 prototype** — real shell, correct typed

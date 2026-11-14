@@ -153,7 +153,7 @@ function sendFrame() {
       hidden: scrolled || cursorRow >= term.rows,
     };
     if (!cursor.hidden && rows[cursorRow]) {
-      cursor.visualX = cursorVisualX(rows[cursorRow].parts, buf.cursorX, term.cols);
+      cursor.visualX = cursorVisualX(rows[cursorRow].visualClusters, buf.cursorX, term.cols);
     }
     win.webContents.send('frame', { rows, cursor });
   } catch (err) {

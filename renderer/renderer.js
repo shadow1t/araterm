@@ -67,6 +67,8 @@ function drawFrame(frame) {
   for (let r = 0; r < frame.rows.length; r++) {
     const rowDiv = document.createElement('div');
     rowDiv.className = 'row';
+    // dir="auto": أول حرف قوي يحدد اتجاه الصف — مطابق لحساب المؤشر في arafix
+    rowDiv.dir = 'auto';
     const parts = frame.rows[r].parts;
     if (!parts || parts.length === 0) {
       rowDiv.appendChild(document.createTextNode('\u00A0'));
@@ -129,6 +131,17 @@ const SEQ = {
 };
 
 document.addEventListener('keydown', (e) => {
+  // اللصق: كترل+V أو شيفت+Insert — نترك المفتاح يمر فيُطلق حدث paste
+  // (يلتقطه المستمع أدناه) بدل إرسال بايت تحكم بلا معنى للصدفة
+  if ((e.ctrlKey && !e.altKey && !e.shiftKey && e.code === 'KeyV') ||
+      (e.shiftKey && !e.ctrlKey && !e.altKey && e.key === 'Insert')) {
+    return;
+  }
+  // النسخ: كترل+C مع نص محدد → نتركه للنظام ينسخ التحديد
+  if (e.ctrlKey && !e.altKey && e.code === 'KeyC' &&
+      String(window.getSelection ? window.getSelection() : '')) {
+    return;
+  }
   // كترل + حرف → بايت التحكم
   if (e.ctrlKey && !e.altKey && /^Key[A-Z]$/.test(e.code)) {
     const byte = String.fromCharCode(e.code.charCodeAt(3) - 64);

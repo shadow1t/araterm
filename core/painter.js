@@ -3,10 +3,16 @@
 /**
  * araterm painter — قلب العرض العربي.
  *
- * يحوّل صفًا من خلايا الشاشة (حرف + نمط لكل خلية) إلى مقاطع بالترتيب
- * البصري الصحيح عبر محرك arafix (تشكيل سياقي + BiDi)، مع التصاق النمط
- * (اللون/الوزن) بنصه أثناء إعادة الترتيب، وحساب الموضع البصري للمؤشر
- * على مستوى العنقود الواحد (العربي RTL واللاتيني LTR في نفس المقطع).
+ * درس معماري حاسم (2026-11-14، من أول تشغيل حقيقي): نافذتنا صفحة DOM داخل
+ * Chromium — والمتصفح يشكّل العربية ويطبق BiDi بنفسه أصلاً. إرسال النص
+ * "بترتيب بصري معكوس مسبقًا" (منطق التيرمنالات الغبية) جعل المتصفح يعكسه
+ * مرة ثانية → انقلاب مزدوج: مرحبا ظهرت معكوسة حتى في رسائل cmd الإنجليزية.
+ *
+ * العقد الجديد:
+ *   parts          → نص **منطقي** (الترتيب الأصلي) بأنماطه — يُرسم كما هو في
+ *                    DOM، والمتصفح يتكفل بالتشكيل والاتجاه (dir="auto" لكل صف).
+ *   visualClusters → الترتيب البصري كما سيرسمه المتصفح بالضبط (يسار→يمين)،
+ *                    يُستخدم **لحساب موضع المؤشر فقط** عبر محرك arafix.
  *
  * وحدة نقية بلا اعتماد على Electron — قابلة للاختبار بـ node --test.
  */
@@ -27,45 +33,19 @@ const ARABIC_RE = /[\u0621-\u064A\u0671-\u06D3\uFB50-\uFDFF\uFE70-\uFEFF]/;
 const RTL_RE = /[\u0621-\u064A\u0671-\u06D3\uFB50-\uFDFF\uFE70-\uFEFF]/;
 
 /**
- * تحويل خلايا صف إلى مقاطع بصرية.
+ * تحويل خلايا صف إلى مقاطع منطقية للعرض + عناقيد بصرية للمؤشر.
  *
  * @param {Array<{ch: string, style?: object}>} cells خلايا الصف بالترتيب المنطقي
- * @param {'auto'|'rtl'|'ltr'} [dir] اتجاه الفقرة
- * @returns {{parts: Array<Part>, arabic: boolean}}
+ * @param {'auto'|'rtl'|'ltr'} [dir] اتجاه الفقرة (auto = أول حرف قوي — يطابق dir="auto" في HTML)
+ * @returns {{parts: Array<Part>, arabic: boolean, visualClusters: Array<{cellIndex: number, rtl: boolean, w: number}>}}
  *
- * Part = { text, style, cells: number[], clusters: {cellIndex, rtl, w}[] }
- *   clusters يصف كل عنقود: فهرس خليته المنطقية، اتجاهه، وعرضه البصري (أحرف).
+ * Part = { text, style, cells, clusters } — text بالترتيب المنطقي الأصلي.
+ * visualClusters مرتب يسار→يمين كما سيرسمه المتصفح (لتقريب موضع المؤشر).
  */
 export function rowToVisual(cells, dir = 'auto') {
   const hasArabic = cells.some((c) => c.ch && ARABIC_RE.test(c.ch));
 
-  if (!hasArabic) {
-    // لا عربية في الصف: تمرير مباشر مع دمج الخلايا المتشابهة النمط
-    const parts = [];
-    const push = (ch, i) => {
-      const last = parts[parts.length - 1];
-      if (last && last.style === cells[i].style) {
-        last.text += ch;
-        last.cells.push(i);
-        last.clusters.push({ cellIndex: i, rtl: false, w: 1 });
-      } else {
-        parts.push({
-          text: ch,
-          style: cells[i].style,
-          cells: [i],
-          clusters: [{ cellIndex: i, rtl: false, w: 1 }],
-        });
-      }
-    };
-    for (let i = 0; i < cells.length; i++) {
-      const ch = cells[i].ch;
-      if (ch === '' || ch == null || INVISIBLE.has(ch)) continue;
-      push(ch, i);
-    }
-    return { parts, arabic: false };
-  }
-
-  // عناقيد تحمل النمط وفهرس الخلية، ثم تشكيل ثم ترتيب بصري
+  // عناقيد منطقية كما هي — بلا تشكيل: المتصفح يشكّل بنفسه وبخطوط أفضل
   const clusters = [];
   for (let i = 0; i < cells.length; i++) {
     const ch = cells[i].ch;
@@ -73,11 +53,9 @@ export function rowToVisual(cells, dir = 'auto') {
     clusters.push({ base: ch, rest: '', meta: cells[i].style, cellIndex: i });
   }
 
-  const visual = reorderClusters(shapeClusters(clusters), dir);
-
-  // دمج المتجاورين بنفس النمط، مع اتجاه لكل عنقود على حدة
+  // مقاطع العرض: منطقية، دمج المتجاور بنفس مرجع النمط
   const parts = [];
-  for (const c of visual) {
+  for (const c of clusters) {
     const cluster = { cellIndex: c.cellIndex, rtl: RTL_RE.test(c.base), w: (c.base + c.rest).length };
     const last = parts[parts.length - 1];
     if (last && last.style === c.meta) {
@@ -93,7 +71,19 @@ export function rowToVisual(cells, dir = 'auto') {
       });
     }
   }
-  return { parts, arabic: true };
+
+  // الترتيب البصري — لحساب المؤشر فقط:
+  // shapeClusters لدمج لام-ألف في عنقود واحد بعرض 1 (كما يرسمها المتصفح)
+  // reorderClusters بترتيب يسار→يمين مطابق لخوارزمية UAX#9 في Chromium
+  const visualClusters = hasArabic
+    ? reorderClusters(shapeClusters(clusters), dir).map((c) => ({
+        cellIndex: c.cellIndex,
+        rtl: RTL_RE.test(c.base),
+        w: (c.base + c.rest).length,
+      }))
+    : clusters.map((c) => ({ cellIndex: c.cellIndex, rtl: false, w: (c.base + c.rest).length }));
+
+  return { parts, arabic: hasArabic, visualClusters };
 }
 
 /**
@@ -102,32 +92,28 @@ export function rowToVisual(cells, dir = 'auto') {
  * القاعدة (مستوى العنقود): في عنقود RTL الفجوة المنطقية قبلَه ترسم بعده
  * بصريًا (يمينه)، والفجوة بعدَه ترسم قبله (يساره) — والعكس في LTR.
  *
- * @param {Array<Part>} parts ناتج rowToVisual للصف
+ * @param {Array<{cellIndex, rtl, w}>} visualClusters ناتج rowToVisual (مرتب يسار→يمين)
  * @param {number} cursorX موضع المؤشر المنطقي (0 = بداية الصف)
  * @param {number} totalCells عدد خلايا الصف (لحالة نهاية السطر)
  * @returns {number} الموضع البصري بالأحرف
  */
-export function cursorVisualX(parts, cursorX, totalCells) {
+export function cursorVisualX(visualClusters, cursorX, totalCells) {
   // حالة نهاية السطر: فجوة بعد آخر خلية منطقية
   if (cursorX >= totalCells) {
     const k = totalCells - 1;
     let visual = 0;
-    for (const p of parts) {
-      for (const cl of p.clusters) {
-        if (cl.cellIndex === k) return cl.rtl ? visual : visual + cl.w;
-        visual += cl.w;
-      }
+    for (const cl of visualClusters) {
+      if (cl.cellIndex === k) return cl.rtl ? visual : visual + cl.w;
+      visual += cl.w;
     }
     return visual;
   }
 
   // فجوة قبل الخلية cursorX
   let visual = 0;
-  for (const p of parts) {
-    for (const cl of p.clusters) {
-      if (cl.cellIndex === cursorX) return cl.rtl ? visual + cl.w : visual;
-      visual += cl.w;
-    }
+  for (const cl of visualClusters) {
+    if (cl.cellIndex === cursorX) return cl.rtl ? visual + cl.w : visual;
+    visual += cl.w;
   }
-  return visual; // الخلية غير موجودة (مثل فجوة لام-ألف) — أفضل تقريب
+  return visual; // الخلية غير موجودة (مثل ألف لام-ألف المدمجة) — أفضل تقريب
 }
