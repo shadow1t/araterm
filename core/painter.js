@@ -50,17 +50,24 @@ export function rowToVisual(cells, dir = 'auto') {
   const hasArabic = cells.some((c) => c.ch && ARABIC_RE.test(c.ch));
 
   const clusterW = (cell) => {
-    if (cell.w !== undefined) return cell.w;
+    if (cell.w > 0) return cell.w;
     const len = (cell.ch ?? '').length;
     return len >= 2 ? len : 1; // surrogate pair (إيموجي) = 2 أعمدة تقريبًا
   };
 
   // عناقيد منطقية كما هي — بلا تشكيل: المتصفح يشكّل بنفسه وبخطوط أفضل
+  // خلية فارغة (لم يكتب البرنامج فيها شيئًا) = عمود موجود في الشبكة:
+  // cmd عبر ConPTY يتقدم المؤشر فوق المسافة دون كتابتها، فلو تجاهلناها
+  // لانضغط "مرحبا كيفك" على "مرحباكيفك" في DOM وانحرف المؤشر عمودًا.
+  // (امتداد المحرف العريض w=0 لا عمود له — يتجاهل)
   const clusters = [];
   for (let i = 0; i < cells.length; i++) {
-    const ch = cells[i].ch;
-    if (ch === '' || ch == null || INVISIBLE.has(ch)) continue;
-    clusters.push({ base: ch, rest: '', meta: cells[i].style, cellIndex: i, w: clusterW(cells[i]) });
+    const cell = cells[i];
+    if (cell.w === 0 && (cell.ch ?? '') === '') continue; // امتداد محرف عريض
+    const raw = cell.ch ?? '';
+    if (INVISIBLE.has(raw)) continue;
+    const ch = raw === '' ? ' ' : raw; // عمود فارغ يُرسم مسافة
+    clusters.push({ base: ch, rest: '', meta: cell.style, cellIndex: i, w: clusterW(cell) });
   }
 
   // مقاطع العرض: منطقية، دمج المتجاور بنفس مرجع النمط

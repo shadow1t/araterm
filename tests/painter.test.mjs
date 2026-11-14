@@ -141,3 +141,44 @@ test('إيموجي فلكي بلا w (خارج xterm): يُحسب عمودين �
   const { visualClusters } = rowToVisual(cs);
   assert.equal(visualClusters[0].w, 2);
 });
+
+test('خلية فارغة (فراغ شبكة) = عمود يُرسم: "مرحبا كيفك" لا تنضغط على "مرحباكيفك"', () => {
+  // cmd عبر ConPTY يصدّر المسافة بتقدم المؤشر فقط — الخلية تبقى فارغة
+  const style = {};
+  const word1 = M + R + H + B + A;            // مرحبا — خلايا 0..4
+  const word2 = '\u0643\u064A\u0641\u0643';   // كيفك — خلايا 6..10
+  const cs = [
+    ...[...word1].map((ch) => ({ ch, style, w: 1 })),
+    { ch: '', style, w: 1 },                   // المسافة: خلية فارغة!
+    ...[...word2].map((ch) => ({ ch, style, w: 1 })),
+  ];
+  const { parts, visualClusters } = rowToVisual(cs);
+  assert.equal(parts[0].text.length, 10); // مرحبا(5) + مسافة(1) + كيفك(4)
+  assert.ok(parts[0].text.includes(' '), 'المسافة يجب أن تُرسم');
+  // كل الأعمدة ممثلة في حساب المؤشر: 10 أعمدة لا 9
+  assert.equal(visualClusters.reduce((n, c) => n + c.w, 0), 10);
+});
+
+test('خلية فارغة لا تُعد امتداد محرف عريض (w=0 مع ch فارغ تتجاهل)', () => {
+  const style = {};
+  const cs = [
+    { ch: 'a', style, w: 1 },
+    { ch: '', style, w: 0 },  // النصف الثاني من محرف عريض
+    { ch: 'b', style, w: 1 },
+  ];
+  const { parts, visualClusters } = rowToVisual(cs);
+  assert.equal(parts[0].text, 'ab');
+  assert.equal(visualClusters.reduce((n, c) => n + c.w, 0), 2);
+});
+
+test('مؤشر بعد مسافة فارغة الشبكة: عمود صحيح (لا انزياح)', () => {
+  // "ab" + خلية فارغة + "cd" — المؤشر قبل c (الخلية 3) يجب أن يكون عمود 3
+  const style = {};
+  const cs = [
+    { ch: 'a', style, w: 1 }, { ch: 'b', style, w: 1 },
+    { ch: '', style, w: 1 },
+    { ch: 'c', style, w: 1 }, { ch: 'd', style, w: 1 },
+  ];
+  const { visualClusters } = rowToVisual(cs);
+  assert.equal(cursorVisualX(visualClusters, 3, 5), 3);
+});
