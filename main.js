@@ -178,7 +178,9 @@ function createWindow() {
     backgroundColor: '#12121c',
     useContentSize: true,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      // .cjs إلزامي: package.json فيها type:module — Electron يحمّل الـ preload
+      // بـ require() فأي .js يُرفض بـ ERR_REQUIRE_ESM والجسر لا يوجد (عطل النافذة الفارغة)
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
