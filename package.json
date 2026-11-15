@@ -56,7 +56,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "shortcutName": "araterm"
-    }
+    },
+    "npmRebuild": false
   },
   "repository": {
     "type": "git",
