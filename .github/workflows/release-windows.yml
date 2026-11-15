@@ -20,7 +20,9 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm ci
+        # npm install (وليس npm ci) — المستودع بلا package-lock.json بعد؛
+        # عندما يُرفع ملف القفل مستقبلًا يمكن العودة إلى npm ci الأسرع والأثبت
+        run: npm install --no-audit --no-fund
 
       - name: Run unit tests
         run: npm test
